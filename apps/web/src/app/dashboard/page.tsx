@@ -105,6 +105,33 @@ export default function BankDashboard() {
     return false;
   };
 
+  const resolveVerticalOverlaps = (layout: Layout): Layout => {
+    // Push lower items down until no overlaps remain.
+    const next = layout.map((item) => ({ ...item }));
+
+    for (let safety = 0; safety < 50; safety++) {
+      let movedAnything = false;
+      for (let i = 0; i < next.length; i++) {
+        for (let j = i + 1; j < next.length; j++) {
+          const a = next[i];
+          const b = next[j];
+          if (getOverlapArea(a, b) <= 0) continue;
+
+          const upper = a.y <= b.y ? a : b;
+          const lower = upper === a ? b : a;
+          const requiredY = upper.y + upper.h;
+          if (lower.y < requiredY) {
+            lower.y = requiredY;
+            movedAnything = true;
+          }
+        }
+      }
+      if (!movedAnything) break;
+    }
+
+    return next;
+  };
+
   const detectSwapTarget = (
     layoutAtDragStart: Layout | null,
     oldItem: LayoutItem | null,
@@ -217,6 +244,40 @@ export default function BankDashboard() {
     const cols =
       colsByBreakpoint[breakpoint as keyof typeof colsByBreakpoint] ?? 12;
     const nextLayout = fitRow(layout, movedItem.y, cols);
+    setLayouts((prev) => ({
+      ...prev,
+      [breakpoint]: nextLayout,
+    }));
+  };
+
+  const handleResizeStop = (
+    currentLayout: Layout,
+    oldItem: LayoutItem | null,
+    newItem: LayoutItem | null
+  ) => {
+    const cols =
+      colsByBreakpoint[breakpoint as keyof typeof colsByBreakpoint] ?? 12;
+
+    const movedId = newItem?.i ?? oldItem?.i;
+    if (!movedId) return;
+
+    const movedAfter = currentLayout.find((i) => i.i === movedId);
+    if (!movedAfter) return;
+
+    // 1) Fix horizontal overlaps in the moved row by resizing neighbors.
+    let nextLayout = fitRow(currentLayout, movedAfter.y, cols);
+
+    // 2) If any overlaps remain (usually from height increases), push cards down.
+    if (hasAnyOverlap(nextLayout)) {
+      nextLayout = resolveVerticalOverlaps(nextLayout);
+    }
+
+    // 3) Normalize rows after any vertical pushes.
+    const uniqueYs = Array.from(new Set(nextLayout.map((i) => i.y)));
+    for (const y of uniqueYs) {
+      nextLayout = fitRow(nextLayout, y, cols);
+    }
+
     setLayouts((prev) => ({
       ...prev,
       [breakpoint]: nextLayout,
@@ -528,8 +589,8 @@ export default function BankDashboard() {
                   onDragStop={(currentLayout, oldItem, newItem) =>
                     handleDragStop(currentLayout, oldItem, newItem)
                   }
-                  onResizeStop={(currentLayout, _oldItem, newItem) =>
-                    autoFitRowForItem(currentLayout, newItem)
+                  onResizeStop={(currentLayout, oldItem, newItem) =>
+                    handleResizeStop(currentLayout, oldItem, newItem)
                   }
                   dragConfig={{
                     handle: ".drag-handle",
