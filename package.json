@@ -1,0 +1,15 @@
+{
+  "name": "greenbag",
+  "private": true,
+  "scripts": {
+    "dev:web": "cd apps/web && npm run dev",
+    "dev:api": "cd apps/api && npx tsx watch src/index.ts",
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "recharts": "^3.7.0"
+  }
+}
