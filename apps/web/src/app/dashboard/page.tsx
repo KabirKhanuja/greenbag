@@ -33,7 +33,7 @@ type LayoutsByBreakpoint = Record<string, Layout>;
 const defaultLayouts: LayoutsByBreakpoint = {
   lg: [
     { i: "riskDist", x: 0, y: 0, w: 3, h: 4, minW: 3, minH: 4 },
-    { i: "weeklyTrend", x: 3, y: 0, w: 9, h: 4, minW: 5, minH: 4 },
+    { i: "weeklyTrend", x: 3, y: 0, w: 9, h: 4, minW: 4, minH: 4 },
     { i: "stressIndicators", x: 0, y: 4, w: 6, h: 3, minW: 4, minH: 3 },
     { i: "featureImportance", x: 6, y: 4, w: 6, h: 3, minW: 4, minH: 3 },
     { i: "atRiskTable", x: 0, y: 7, w: 12, h: 4, minW: 8, minH: 4 },
@@ -592,6 +592,9 @@ export default function BankDashboard() {
                   onResizeStop={(currentLayout, oldItem, newItem) =>
                     handleResizeStop(currentLayout, oldItem, newItem)
                   }
+                  resizeConfig={{
+                    handles: ["se", "ne"],
+                  }}
                   dragConfig={{
                     handle: ".drag-handle",
                     cancel: "a,button,input,textarea,select,option,label",
