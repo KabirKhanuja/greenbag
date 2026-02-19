@@ -20,8 +20,8 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { Responsive } from "react-grid-layout";
-import type { Layout } from "react-grid-layout";
+import { Responsive, getCompactor } from "react-grid-layout";
+import type { Layout, LayoutItem } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 
 const ResponsiveGridLayout = Responsive;
@@ -74,9 +74,227 @@ export default function BankDashboard() {
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
   const [gridWidth, setGridWidth] = useState<number>(0);
   const [animateIn, setAnimateIn] = useState(false);
+  const [breakpoint, setBreakpoint] = useState<string>("lg");
+  const layoutBeforeDragRef = useRef<Layout | null>(null);
   const [showAIChat, setShowAIChat] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([]);
   const [chatInput, setChatInput] = useState("");
+
+  const colsByBreakpoint = useMemo(
+    () => ({ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }),
+    []
+  );
+
+  const getOverlapArea = (a: LayoutItem, b: LayoutItem): number => {
+    const left = Math.max(a.x, b.x);
+    const right = Math.min(a.x + a.w, b.x + b.w);
+    const top = Math.max(a.y, b.y);
+    const bottom = Math.min(a.y + a.h, b.y + b.h);
+    const width = right - left;
+    const height = bottom - top;
+    if (width <= 0 || height <= 0) return 0;
+    return width * height;
+  };
+
+  const hasAnyOverlap = (layout: Layout): boolean => {
+    for (let i = 0; i < layout.length; i++) {
+      for (let j = i + 1; j < layout.length; j++) {
+        if (getOverlapArea(layout[i], layout[j]) > 0) return true;
+      }
+    }
+    return false;
+  };
+
+  const detectSwapTarget = (
+    layoutAtDragStart: Layout | null,
+    oldItem: LayoutItem | null,
+    newItem: LayoutItem | null
+  ): string | null => {
+    if (!layoutAtDragStart || !oldItem || !newItem) {
+      return null;
+    }
+
+    // Find which card from the original layout the dragged card now overlaps most with
+    let bestTarget: LayoutItem | null = null;
+    let bestArea = 0;
+    
+    for (const candidate of layoutAtDragStart) {
+      if (candidate.i === newItem.i) continue;
+      const area = getOverlapArea(newItem, candidate);
+      if (area > bestArea) {
+        bestArea = area;
+        bestTarget = candidate;
+      }
+    }
+
+    // Only swap if there's significant overlap (at least 30% of the moved card's area)
+    const movedArea = Math.max(1, newItem.w * newItem.h);
+    if (!bestTarget || bestArea / movedArea < 0.3) {
+      return null;
+    }
+
+    return bestTarget.i;
+  };
+
+  const fitRow = (layout: Layout, rowY: number, cols: number): Layout => {
+    const rowItems = layout
+      .filter((item) => item.y === rowY)
+      .slice()
+      .sort((a, b) => a.x - b.x);
+
+    if (rowItems.length <= 1) return layout;
+
+    const minWById = new Map<string, number>();
+    for (const item of rowItems) {
+      minWById.set(item.i, Math.max(1, item.minW ?? 1));
+    }
+
+    const totalMinW = rowItems.reduce(
+      (sum, item) => sum + (minWById.get(item.i) ?? 1),
+      0
+    );
+
+    // If min widths can't fit, don't force anything crazy; just normalize x positions.
+    if (totalMinW > cols) {
+      const normalized = new Map<string, { x: number; w: number }>();
+      let x = 0;
+      for (const item of rowItems) {
+        normalized.set(item.i, { x, w: item.w });
+        x += item.w;
+      }
+      return layout.map((item) => {
+        const next = normalized.get(item.i);
+        return next ? { ...item, x: next.x } : item;
+      });
+    }
+
+    // Start from current widths but ensure they're at least minW.
+    const widths = rowItems.map((item) =>
+      Math.max(minWById.get(item.i) ?? 1, item.w)
+    );
+
+    const sumW = () => widths.reduce((s, w) => s + w, 0);
+
+    // If too wide, shrink down (largest slack first) until it fits.
+    while (sumW() > cols) {
+      let bestIndex = -1;
+      let bestSlack = 0;
+      for (let idx = 0; idx < rowItems.length; idx++) {
+        const item = rowItems[idx];
+        const minW = minWById.get(item.i) ?? 1;
+        const slack = widths[idx] - minW;
+        if (slack > bestSlack) {
+          bestSlack = slack;
+          bestIndex = idx;
+        }
+      }
+      if (bestIndex === -1) break;
+      widths[bestIndex] -= 1;
+    }
+
+    // If there's leftover space, give it to the last card in the row.
+    if (sumW() < cols) {
+      widths[widths.length - 1] += cols - sumW();
+    }
+
+    const normalized = new Map<string, { x: number; w: number }>();
+    let x = 0;
+    for (let idx = 0; idx < rowItems.length; idx++) {
+      const item = rowItems[idx];
+      const w = widths[idx];
+      normalized.set(item.i, { x, w });
+      x += w;
+    }
+
+    return layout.map((item) => {
+      const next = normalized.get(item.i);
+      return next ? { ...item, x: next.x, w: next.w } : item;
+    });
+  };
+
+  const autoFitRowForItem = (layout: Layout, movedItem: LayoutItem | null) => {
+    if (!movedItem) return;
+    const cols =
+      colsByBreakpoint[breakpoint as keyof typeof colsByBreakpoint] ?? 12;
+    const nextLayout = fitRow(layout, movedItem.y, cols);
+    setLayouts((prev) => ({
+      ...prev,
+      [breakpoint]: nextLayout,
+    }));
+  };
+
+  const handleDragStart = (currentLayout: Layout) => {
+    // Snapshot so we can do stable swaps and/or snap back.
+    layoutBeforeDragRef.current = currentLayout.map((item) => ({ ...item }));
+  };
+
+  const handleDragStop = (
+    currentLayout: Layout,
+    oldItem: LayoutItem | null,
+    newItem: LayoutItem | null
+  ) => {
+    if (!oldItem || !newItem) return;
+
+    const cols =
+      colsByBreakpoint[breakpoint as keyof typeof colsByBreakpoint] ?? 12;
+
+    // Check if we should swap with another card
+    const swapTargetId = detectSwapTarget(
+      layoutBeforeDragRef.current,
+      oldItem,
+      newItem
+    );
+
+    const before = layoutBeforeDragRef.current;
+    let nextLayout: Layout = currentLayout;
+
+    // Prefer computing swaps from the pre-drag snapshot (it is guaranteed non-overlapping).
+    if (swapTargetId && before) {
+      const targetInStart = before.find((item) => item.i === swapTargetId);
+      if (targetInStart) {
+        nextLayout = before.map((item) => {
+          if (item.i === newItem.i) {
+            return { ...item, x: targetInStart.x, y: targetInStart.y };
+          }
+          if (item.i === swapTargetId) {
+            return { ...item, x: oldItem.x, y: oldItem.y };
+          }
+          return item;
+        });
+      }
+    }
+
+    // Collect all affected rows and fit them (use post-swap positions for correctness)
+    const affectedYs = new Set<number>();
+    affectedYs.add(newItem.y);
+    affectedYs.add(oldItem.y);
+
+    const movedAfter = nextLayout.find((i) => i.i === newItem.i);
+    if (movedAfter) affectedYs.add(movedAfter.y);
+
+    if (swapTargetId) {
+      const swappedAfter = nextLayout.find((i) => i.i === swapTargetId);
+      if (swappedAfter) affectedYs.add(swappedAfter.y);
+    }
+
+    for (const y of affectedYs) {
+      nextLayout = fitRow(nextLayout, y, cols);
+    }
+
+    // Enforce: never persist overlaps after drop.
+    // If we still overlap for any reason, snap back (or keep the snapshot-based swap).
+    if (hasAnyOverlap(nextLayout) && before) {
+      nextLayout = swapTargetId ? nextLayout : before;
+    }
+
+    setLayouts((prev) => ({
+      ...prev,
+      [breakpoint]: nextLayout,
+    }));
+
+    // Clear snapshot
+    layoutBeforeDragRef.current = null;
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => setAnimateIn(true), 60);
@@ -304,8 +522,14 @@ export default function BankDashboard() {
                   breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                   cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
                   rowHeight={80}
-                  onLayoutChange={(_currentLayout: Layout, allLayouts) =>
-                    setLayouts(allLayouts as LayoutsByBreakpoint)
+                  compactor={getCompactor(null, true)}
+                  onBreakpointChange={(newBreakpoint) => setBreakpoint(newBreakpoint)}
+                  onDragStart={(currentLayout) => handleDragStart(currentLayout)}
+                  onDragStop={(currentLayout, oldItem, newItem) =>
+                    handleDragStop(currentLayout, oldItem, newItem)
+                  }
+                  onResizeStop={(currentLayout, _oldItem, newItem) =>
+                    autoFitRowForItem(currentLayout, newItem)
                   }
                   dragConfig={{
                     handle: ".drag-handle",
@@ -315,7 +539,7 @@ export default function BankDashboard() {
                   margin={[24, 24]}
                 >
               {/* Risk Distribution */}
-              <div key="riskDist">
+              <div key="riskDist" data-grid-id="riskDist">
                 <Card className="p-6 bg-white border-blue-100 h-full overflow-hidden flex flex-col">
                   <div className="flex items-center gap-2 mb-4 cursor-move drag-handle">
                     <GripVertical className="w-5 h-5 text-gray-400" />
@@ -369,7 +593,7 @@ export default function BankDashboard() {
               </div>
 
               {/* Weekly Risk Trend */}
-              <div key="weeklyTrend">
+              <div key="weeklyTrend" data-grid-id="weeklyTrend">
                 <Card className="p-6 bg-white border-blue-100 h-full overflow-hidden flex flex-col">
                   <div className="flex items-center gap-2 mb-4 cursor-move drag-handle">
                     <GripVertical className="w-5 h-5 text-gray-400" />
@@ -415,7 +639,7 @@ export default function BankDashboard() {
               </div>
 
               {/* Financial Stress Indicators */}
-              <div key="stressIndicators">
+              <div key="stressIndicators" data-grid-id="stressIndicators">
                 <Card className="p-6 bg-white border-blue-100 h-full overflow-auto">
                   <div className="flex items-center gap-2 mb-4 cursor-move drag-handle">
                     <GripVertical className="w-5 h-5 text-gray-400" />
@@ -444,7 +668,7 @@ export default function BankDashboard() {
               </div>
 
               {/* Model Feature Importance */}
-              <div key="featureImportance">
+              <div key="featureImportance" data-grid-id="featureImportance">
                 <Card className="p-6 bg-white border-blue-100 h-full overflow-auto">
                   <div className="flex items-center gap-2 mb-4 cursor-move drag-handle">
                     <GripVertical className="w-5 h-5 text-gray-400" />
@@ -470,7 +694,7 @@ export default function BankDashboard() {
               </div>
 
               {/* At-Risk Customers Table */}
-              <div key="atRiskTable">
+              <div key="atRiskTable" data-grid-id="atRiskTable">
                 <Card className="p-6 bg-white border-blue-100 h-full overflow-auto">
                   <div className="flex items-center gap-2 mb-4 cursor-move drag-handle">
                     <GripVertical className="w-5 h-5 text-gray-400" />
