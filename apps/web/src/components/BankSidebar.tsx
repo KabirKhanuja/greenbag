@@ -7,13 +7,15 @@ import {
   Bot,
   Calculator,
   TrendingUp,
+  RotateCcw,
 } from "lucide-react";
 
 interface BankSidebarProps {
   className?: string;
+  onResetLayout?: () => void;
 }
 
-export function BankSidebar({ className = "" }: BankSidebarProps) {
+export function BankSidebar({ className = "", onResetLayout }: BankSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -71,6 +73,18 @@ export function BankSidebar({ className = "" }: BankSidebarProps) {
             );
           })}
         </nav>
+
+        {onResetLayout ? (
+          <div className="mt-6">
+            <button
+              onClick={onResetLayout}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-blue-100 hover:bg-[#005F82] hover:text-white"
+            >
+              <RotateCcw className="w-5 h-5" />
+              <span className="font-medium text-left">Reset layout</span>
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-auto p-6 border-t border-blue-400/30">

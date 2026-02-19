@@ -23,54 +23,13 @@ import {
 import { Responsive, getCompactor } from "react-grid-layout";
 import type { Layout, LayoutItem } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
+import { useDashboardLayouts } from "./DashboardLayoutProvider";
 
 const ResponsiveGridLayout = Responsive;
 
-type LayoutsByBreakpoint = Record<string, Layout>;
-
-// Default layouts per breakpoint (prevents overlap on non-lg widths)
-// Resets on reload because we don't persist to storage.
-const defaultLayouts: LayoutsByBreakpoint = {
-  lg: [
-    { i: "riskDist", x: 0, y: 0, w: 3, h: 4, minW: 3, minH: 4 },
-    { i: "weeklyTrend", x: 3, y: 0, w: 9, h: 4, minW: 4, minH: 4 },
-    { i: "stressIndicators", x: 0, y: 4, w: 6, h: 3, minW: 4, minH: 3 },
-    { i: "featureImportance", x: 6, y: 4, w: 6, h: 3, minW: 4, minH: 3 },
-    { i: "atRiskTable", x: 0, y: 7, w: 12, h: 4, minW: 8, minH: 4 },
-  ],
-  md: [
-    { i: "riskDist", x: 0, y: 0, w: 3, h: 4, minW: 3, minH: 4 },
-    { i: "weeklyTrend", x: 3, y: 0, w: 7, h: 4, minW: 4, minH: 4 },
-    { i: "stressIndicators", x: 0, y: 4, w: 5, h: 3, minW: 4, minH: 3 },
-    { i: "featureImportance", x: 5, y: 4, w: 5, h: 3, minW: 4, minH: 3 },
-    { i: "atRiskTable", x: 0, y: 7, w: 10, h: 4, minW: 8, minH: 4 },
-  ],
-  sm: [
-    { i: "riskDist", x: 0, y: 0, w: 3, h: 4, minW: 2, minH: 4 },
-    { i: "weeklyTrend", x: 3, y: 0, w: 3, h: 4, minW: 3, minH: 4 },
-    { i: "stressIndicators", x: 0, y: 4, w: 6, h: 3, minW: 4, minH: 3 },
-    { i: "featureImportance", x: 0, y: 7, w: 6, h: 3, minW: 4, minH: 3 },
-    { i: "atRiskTable", x: 0, y: 10, w: 6, h: 4, minW: 4, minH: 4 },
-  ],
-  xs: [
-    { i: "riskDist", x: 0, y: 0, w: 4, h: 4, minW: 4, minH: 4 },
-    { i: "weeklyTrend", x: 0, y: 4, w: 4, h: 4, minW: 4, minH: 4 },
-    { i: "stressIndicators", x: 0, y: 8, w: 4, h: 3, minW: 4, minH: 3 },
-    { i: "featureImportance", x: 0, y: 11, w: 4, h: 3, minW: 4, minH: 3 },
-    { i: "atRiskTable", x: 0, y: 14, w: 4, h: 5, minW: 4, minH: 4 },
-  ],
-  xxs: [
-    { i: "riskDist", x: 0, y: 0, w: 2, h: 4, minW: 2, minH: 4 },
-    { i: "weeklyTrend", x: 0, y: 4, w: 2, h: 4, minW: 2, minH: 4 },
-    { i: "stressIndicators", x: 0, y: 8, w: 2, h: 3, minW: 2, minH: 3 },
-    { i: "featureImportance", x: 0, y: 11, w: 2, h: 3, minW: 2, minH: 3 },
-    { i: "atRiskTable", x: 0, y: 14, w: 2, h: 6, minW: 2, minH: 4 },
-  ],
-};
-
 export default function BankDashboard() {
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
-  const [layouts, setLayouts] = useState<LayoutsByBreakpoint>(defaultLayouts);
+  const { layouts, setLayouts, resetLayouts } = useDashboardLayouts();
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
   const [gridWidth, setGridWidth] = useState<number>(0);
   const [animateIn, setAnimateIn] = useState(false);
@@ -79,6 +38,11 @@ export default function BankDashboard() {
   const [showAIChat, setShowAIChat] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([]);
   const [chatInput, setChatInput] = useState("");
+
+  const handleResetLayout = () => {
+    layoutBeforeDragRef.current = null;
+    resetLayouts();
+  };
 
   const colsByBreakpoint = useMemo(
     () => ({ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }),
@@ -105,8 +69,12 @@ export default function BankDashboard() {
     return false;
   };
 
-  const resolveVerticalOverlaps = (layout: Layout): Layout => {
-    // Push lower items down until no overlaps remain.
+  const resolveVerticalOverlaps = (
+    layout: Layout,
+    keepOnTopIds: Set<string> = new Set()
+  ): Layout => {
+    // Push items down until no overlaps remain.
+    // If two items start on the same row, prefer keeping "keepOnTopIds" in place.
     const next = layout.map((item) => ({ ...item }));
 
     for (let safety = 0; safety < 50; safety++) {
@@ -117,8 +85,30 @@ export default function BankDashboard() {
           const b = next[j];
           if (getOverlapArea(a, b) <= 0) continue;
 
-          const upper = a.y <= b.y ? a : b;
-          const lower = upper === a ? b : a;
+          let upper: LayoutItem;
+          let lower: LayoutItem;
+
+          if (a.y === b.y) {
+            const aPinned = keepOnTopIds.has(a.i);
+            const bPinned = keepOnTopIds.has(b.i);
+
+            if (aPinned && !bPinned) {
+              upper = a;
+              lower = b;
+            } else if (bPinned && !aPinned) {
+              upper = b;
+              lower = a;
+            } else {
+              // Stable fallback: keep the larger footprint in place.
+              const aArea = a.w * a.h;
+              const bArea = b.w * b.h;
+              upper = aArea >= bArea ? a : b;
+              lower = upper === a ? b : a;
+            }
+          } else {
+            upper = a.y < b.y ? a : b;
+            lower = upper === a ? b : a;
+          }
           const requiredY = upper.y + upper.h;
           if (lower.y < requiredY) {
             lower.y = requiredY;
@@ -130,6 +120,30 @@ export default function BankDashboard() {
     }
 
     return next;
+  };
+
+  const pushRowMatesBelowIfFullWidth = (
+    layout: Layout,
+    movedId: string,
+    cols: number
+  ): Layout => {
+    const moved = layout.find((i) => i.i === movedId);
+    if (!moved) return layout;
+
+    if (moved.w < cols) return layout;
+
+    const rowY = moved.y;
+    const belowY = moved.y + moved.h;
+
+    return layout.map((item) => {
+      if (item.i === movedId) {
+        return { ...item, x: 0, w: cols };
+      }
+      if (item.y === rowY) {
+        return { ...item, y: belowY };
+      }
+      return item;
+    });
   };
 
   const detectSwapTarget = (
@@ -264,12 +278,15 @@ export default function BankDashboard() {
     const movedAfter = currentLayout.find((i) => i.i === movedId);
     if (!movedAfter) return;
 
+    // If resized to full width, push anything sharing the row below it.
+    const working = pushRowMatesBelowIfFullWidth(currentLayout, movedId, cols);
+
     // 1) Fix horizontal overlaps in the moved row by resizing neighbors.
-    let nextLayout = fitRow(currentLayout, movedAfter.y, cols);
+    let nextLayout = fitRow(working, movedAfter.y, cols);
 
     // 2) If any overlaps remain (usually from height increases), push cards down.
     if (hasAnyOverlap(nextLayout)) {
-      nextLayout = resolveVerticalOverlaps(nextLayout);
+      nextLayout = resolveVerticalOverlaps(nextLayout, new Set([movedId]));
     }
 
     // 3) Normalize rows after any vertical pushes.
@@ -325,6 +342,9 @@ export default function BankDashboard() {
       }
     }
 
+    // If the moved card is (or becomes) full-width, push other cards in that row below it.
+    nextLayout = pushRowMatesBelowIfFullWidth(nextLayout, newItem.i, cols);
+
     // Collect all affected rows and fit them (use post-swap positions for correctness)
     const affectedYs = new Set<number>();
     affectedYs.add(newItem.y);
@@ -343,9 +363,18 @@ export default function BankDashboard() {
     }
 
     // Enforce: never persist overlaps after drop.
-    // If we still overlap for any reason, snap back (or keep the snapshot-based swap).
-    if (hasAnyOverlap(nextLayout) && before) {
-      nextLayout = swapTargetId ? nextLayout : before;
+    // Prefer reflow (push down) over snapping back, only snap back if reflow can't resolve.
+    if (hasAnyOverlap(nextLayout)) {
+      nextLayout = resolveVerticalOverlaps(nextLayout, new Set([newItem.i]));
+
+      const uniqueYs = Array.from(new Set(nextLayout.map((i) => i.y)));
+      for (const y of uniqueYs) {
+        nextLayout = fitRow(nextLayout, y, cols);
+      }
+
+      if (hasAnyOverlap(nextLayout) && before) {
+        nextLayout = swapTargetId ? nextLayout : before;
+      }
     }
 
     setLayouts((prev) => ({
@@ -500,7 +529,7 @@ export default function BankDashboard() {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <BankSidebar />
+      <BankSidebar onResetLayout={handleResetLayout} />
 
       <div className="flex-1 flex">
         {/* Main Content */}
