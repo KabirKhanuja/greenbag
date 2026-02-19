@@ -21,22 +21,22 @@ export function BankSidebar({ className = "" }: BankSidebarProps) {
     {
       icon: LayoutDashboard,
       label: "Dashboard",
-      path: "/bank",
+      path: "/dashboard",
     },
     {
       icon: Users,
       label: "At-Risk Customers",
-      path: "/bank/at-risk",
+      path: "/dashboard/at-risk",
     },
     {
       icon: Bot,
       label: "AI Agent",
-      path: "/bank/ai-agent",
+      path: "/dashboard/ai-agent",
     },
     {
       icon: Calculator,
       label: "Intervention Planner",
-      path: "/bank/intervention-planner",
+      path: "/dashboard/intervention-planner",
     },
   ];
 

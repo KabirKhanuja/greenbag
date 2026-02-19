@@ -108,8 +108,8 @@ export default function BankInterventionPlanner() {
         name: "Plan A - Payment Holiday",
         type: "Payment Holiday",
         duration: "2 months",
-        emiChange: "£0 for 2 months",
-        interestImpact: "+£342",
+        emiChange: "₹0 for 2 months",
+        interestImpact: "+₹31,815",
         tenureExtension: "+3 months",
         recoveryChance: 87,
         furtherLossRisk: 8,
@@ -121,8 +121,8 @@ export default function BankInterventionPlanner() {
         name: "Plan B - Reduced EMI",
         type: "Reduced EMI",
         duration: "6 months",
-        emiChange: "£420 (-30%)",
-        interestImpact: "+£589",
+        emiChange: "₹39,060 (-30%)",
+        interestImpact: "+₹54,785",
         tenureExtension: "+6 months",
         recoveryChance: 72,
         furtherLossRisk: 15,
@@ -134,8 +134,8 @@ export default function BankInterventionPlanner() {
         name: "Plan C - Interest-Only",
         type: "Interest-Only Period",
         duration: "3 months",
-        emiChange: "£180 (interest only)",
-        interestImpact: "+£215",
+        emiChange: "₹16,740 (interest only)",
+        interestImpact: "+₹20,010",
         tenureExtension: "+3 months",
         recoveryChance: 64,
         furtherLossRisk: 22,
@@ -268,7 +268,7 @@ export default function BankInterventionPlanner() {
                   <Label htmlFor="emi-change">EMI Change</Label>
                   <Input
                     id="emi-change"
-                    placeholder="e.g., £420"
+                    placeholder="e.g., ₹39,060"
                     value={formData.emiChange}
                     onChange={(e) => setFormData({ ...formData, emiChange: e.target.value })}
                   />
@@ -278,7 +278,7 @@ export default function BankInterventionPlanner() {
                   <Label htmlFor="interest-impact">Interest Impact</Label>
                   <Input
                     id="interest-impact"
-                    placeholder="e.g., +£342"
+                    placeholder="e.g., +₹31,815"
                     value={formData.interestImpact}
                     onChange={(e) => setFormData({ ...formData, interestImpact: e.target.value })}
                   />

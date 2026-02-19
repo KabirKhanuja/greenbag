@@ -12,7 +12,7 @@ export default function CustomerPaymentDetails() {
     {
       id: 1,
       dueDate: "March 1, 2026",
-      amount: 600.0,
+      amount: 55800.0,
       type: "Personal Loan",
       accountNumber: "****4421",
       status: "upcoming",
@@ -20,7 +20,7 @@ export default function CustomerPaymentDetails() {
     {
       id: 2,
       dueDate: "March 15, 2026",
-      amount: 450.0,
+      amount: 41850.0,
       type: "Credit Card",
       accountNumber: "****8029",
       status: "upcoming",
@@ -28,7 +28,7 @@ export default function CustomerPaymentDetails() {
     {
       id: 3,
       dueDate: "April 1, 2026",
-      amount: 600.0,
+      amount: 55800.0,
       type: "Personal Loan",
       accountNumber: "****4421",
       status: "scheduled",
@@ -36,7 +36,7 @@ export default function CustomerPaymentDetails() {
     {
       id: 4,
       dueDate: "April 15, 2026",
-      amount: 450.0,
+      amount: 41850.0,
       type: "Credit Card",
       accountNumber: "****8029",
       status: "scheduled",
@@ -92,7 +92,7 @@ export default function CustomerPaymentDetails() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-gray-800">£{payment.amount.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-gray-800">₹{payment.amount.toFixed(2)}</p>
                   <span
                     className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-medium ${
                       payment.status === "upcoming"
