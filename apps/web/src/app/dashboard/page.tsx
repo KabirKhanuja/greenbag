@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Bell, Settings, TrendingUp, TrendingDown, AlertCircle, AlertTriangle, Bot, X, Send, GripVertical } from "lucide-react";
 import { BankSidebar } from "@/components/BankSidebar";
 import { Card } from "@/components/ui/card";
@@ -32,39 +32,39 @@ type LayoutsByBreakpoint = Record<string, Layout>;
 // Resets on reload because we don't persist to storage.
 const defaultLayouts: LayoutsByBreakpoint = {
   lg: [
-    { i: "riskDist", x: 0, y: 0, w: 3, h: 3, minW: 3, minH: 3 },
-    { i: "weeklyTrend", x: 3, y: 0, w: 9, h: 3, minW: 5, minH: 3 },
-    { i: "stressIndicators", x: 0, y: 3, w: 6, h: 3, minW: 4, minH: 3 },
-    { i: "featureImportance", x: 6, y: 3, w: 6, h: 3, minW: 4, minH: 3 },
-    { i: "atRiskTable", x: 0, y: 6, w: 12, h: 4, minW: 8, minH: 4 },
+    { i: "riskDist", x: 0, y: 0, w: 3, h: 4, minW: 3, minH: 4 },
+    { i: "weeklyTrend", x: 3, y: 0, w: 9, h: 4, minW: 5, minH: 4 },
+    { i: "stressIndicators", x: 0, y: 4, w: 6, h: 3, minW: 4, minH: 3 },
+    { i: "featureImportance", x: 6, y: 4, w: 6, h: 3, minW: 4, minH: 3 },
+    { i: "atRiskTable", x: 0, y: 7, w: 12, h: 4, minW: 8, minH: 4 },
   ],
   md: [
-    { i: "riskDist", x: 0, y: 0, w: 3, h: 3, minW: 3, minH: 3 },
-    { i: "weeklyTrend", x: 3, y: 0, w: 7, h: 3, minW: 4, minH: 3 },
-    { i: "stressIndicators", x: 0, y: 3, w: 5, h: 3, minW: 4, minH: 3 },
-    { i: "featureImportance", x: 5, y: 3, w: 5, h: 3, minW: 4, minH: 3 },
-    { i: "atRiskTable", x: 0, y: 6, w: 10, h: 4, minW: 8, minH: 4 },
+    { i: "riskDist", x: 0, y: 0, w: 3, h: 4, minW: 3, minH: 4 },
+    { i: "weeklyTrend", x: 3, y: 0, w: 7, h: 4, minW: 4, minH: 4 },
+    { i: "stressIndicators", x: 0, y: 4, w: 5, h: 3, minW: 4, minH: 3 },
+    { i: "featureImportance", x: 5, y: 4, w: 5, h: 3, minW: 4, minH: 3 },
+    { i: "atRiskTable", x: 0, y: 7, w: 10, h: 4, minW: 8, minH: 4 },
   ],
   sm: [
-    { i: "riskDist", x: 0, y: 0, w: 3, h: 3, minW: 2, minH: 3 },
-    { i: "weeklyTrend", x: 3, y: 0, w: 3, h: 3, minW: 3, minH: 3 },
-    { i: "stressIndicators", x: 0, y: 3, w: 6, h: 3, minW: 4, minH: 3 },
-    { i: "featureImportance", x: 0, y: 6, w: 6, h: 3, minW: 4, minH: 3 },
-    { i: "atRiskTable", x: 0, y: 9, w: 6, h: 4, minW: 4, minH: 4 },
+    { i: "riskDist", x: 0, y: 0, w: 3, h: 4, minW: 2, minH: 4 },
+    { i: "weeklyTrend", x: 3, y: 0, w: 3, h: 4, minW: 3, minH: 4 },
+    { i: "stressIndicators", x: 0, y: 4, w: 6, h: 3, minW: 4, minH: 3 },
+    { i: "featureImportance", x: 0, y: 7, w: 6, h: 3, minW: 4, minH: 3 },
+    { i: "atRiskTable", x: 0, y: 10, w: 6, h: 4, minW: 4, minH: 4 },
   ],
   xs: [
-    { i: "riskDist", x: 0, y: 0, w: 4, h: 3, minW: 4, minH: 3 },
-    { i: "weeklyTrend", x: 0, y: 3, w: 4, h: 3, minW: 4, minH: 3 },
-    { i: "stressIndicators", x: 0, y: 6, w: 4, h: 3, minW: 4, minH: 3 },
-    { i: "featureImportance", x: 0, y: 9, w: 4, h: 3, minW: 4, minH: 3 },
-    { i: "atRiskTable", x: 0, y: 12, w: 4, h: 5, minW: 4, minH: 4 },
+    { i: "riskDist", x: 0, y: 0, w: 4, h: 4, minW: 4, minH: 4 },
+    { i: "weeklyTrend", x: 0, y: 4, w: 4, h: 4, minW: 4, minH: 4 },
+    { i: "stressIndicators", x: 0, y: 8, w: 4, h: 3, minW: 4, minH: 3 },
+    { i: "featureImportance", x: 0, y: 11, w: 4, h: 3, minW: 4, minH: 3 },
+    { i: "atRiskTable", x: 0, y: 14, w: 4, h: 5, minW: 4, minH: 4 },
   ],
   xxs: [
-    { i: "riskDist", x: 0, y: 0, w: 2, h: 3, minW: 2, minH: 3 },
-    { i: "weeklyTrend", x: 0, y: 3, w: 2, h: 3, minW: 2, minH: 3 },
-    { i: "stressIndicators", x: 0, y: 6, w: 2, h: 3, minW: 2, minH: 3 },
-    { i: "featureImportance", x: 0, y: 9, w: 2, h: 3, minW: 2, minH: 3 },
-    { i: "atRiskTable", x: 0, y: 12, w: 2, h: 6, minW: 2, minH: 4 },
+    { i: "riskDist", x: 0, y: 0, w: 2, h: 4, minW: 2, minH: 4 },
+    { i: "weeklyTrend", x: 0, y: 4, w: 2, h: 4, minW: 2, minH: 4 },
+    { i: "stressIndicators", x: 0, y: 8, w: 2, h: 3, minW: 2, minH: 3 },
+    { i: "featureImportance", x: 0, y: 11, w: 2, h: 3, minW: 2, minH: 3 },
+    { i: "atRiskTable", x: 0, y: 14, w: 2, h: 6, minW: 2, minH: 4 },
   ],
 };
 
@@ -73,9 +73,15 @@ export default function BankDashboard() {
   const [layouts, setLayouts] = useState<LayoutsByBreakpoint>(defaultLayouts);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
   const [gridWidth, setGridWidth] = useState<number>(0);
+  const [animateIn, setAnimateIn] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([]);
   const [chatInput, setChatInput] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAnimateIn(true), 60);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const element = gridContainerRef.current;
@@ -99,21 +105,50 @@ export default function BankDashboard() {
     return () => resizeObserver.disconnect();
   }, []);
 
-  const weeklyTrendData = [
-    { day: "MON", newCases: 45, interventions: 38 },
-    { day: "TUE", newCases: 52, interventions: 42 },
-    { day: "WED", newCases: 48, interventions: 45 },
-    { day: "THU", newCases: 58, interventions: 50 },
-    { day: "FRI", newCases: 62, interventions: 55 },
-    { day: "SAT", newCases: 68, interventions: 60 },
-    { day: "SUN", newCases: 72, interventions: 65 },
-  ];
+  const weeklyTrendData = useMemo(
+    () => [
+      { day: "MON", newCases: 45, interventions: 38 },
+      { day: "TUE", newCases: 52, interventions: 42 },
+      { day: "WED", newCases: 48, interventions: 45 },
+      { day: "THU", newCases: 58, interventions: 50 },
+      { day: "FRI", newCases: 62, interventions: 55 },
+      { day: "SAT", newCases: 68, interventions: 60 },
+      { day: "SUN", newCases: 72, interventions: 65 },
+    ],
+    []
+  );
 
-  const riskDistributionData = [
-    { name: "Low Risk", value: 54, color: "#86efac" },
-    { name: "Moderate", value: 28, color: "#fcd34d" },
-    { name: "High Risk", value: 18, color: "#fca5a5" },
-  ];
+  const [weeklyTrendSeries, setWeeklyTrendSeries] = useState(() =>
+    weeklyTrendData.map((d) => ({ ...d, newCases: 0, interventions: 0 }))
+  );
+
+  useEffect(() => {
+    if (!animateIn) return;
+    const timer = setTimeout(() => setWeeklyTrendSeries(weeklyTrendData), 80);
+    return () => clearTimeout(timer);
+  }, [animateIn, weeklyTrendData]);
+
+  const riskDistributionData = useMemo(
+    () => [
+      { name: "Low Risk", value: 54, color: "#86efac" },
+      { name: "Moderate", value: 28, color: "#fcd34d" },
+      { name: "High Risk", value: 18, color: "#fca5a5" },
+    ],
+    []
+  );
+
+  const [riskDistributionSeries, setRiskDistributionSeries] = useState(() =>
+    riskDistributionData.map((d) => ({ ...d, value: 0 }))
+  );
+
+  useEffect(() => {
+    if (!animateIn) return;
+    const timer = setTimeout(
+      () => setRiskDistributionSeries(riskDistributionData),
+      80
+    );
+    return () => clearTimeout(timer);
+  }, [animateIn, riskDistributionData]);
 
   const financialStressIndicators = [
     { name: "Salary Delay (>3 Days)", cases: 842, color: "#7dd3fc" },
@@ -281,29 +316,33 @@ export default function BankDashboard() {
                 >
               {/* Risk Distribution */}
               <div key="riskDist">
-                <Card className="p-6 bg-white border-blue-100 h-full overflow-auto">
+                <Card className="p-6 bg-white border-blue-100 h-full overflow-hidden flex flex-col">
                   <div className="flex items-center gap-2 mb-4 cursor-move drag-handle">
                     <GripVertical className="w-5 h-5 text-gray-400" />
                     <h3 className="font-semibold text-gray-700">RISK DISTRIBUTION</h3>
                   </div>
-                  <div className="flex items-center justify-center mb-4">
-                    <PieChart width={180} height={180}>
+                  <div className="flex-1 flex items-center justify-center">
+                    <PieChart width={170} height={170}>
                       <Pie
-                        data={riskDistributionData}
+                        data={riskDistributionSeries}
                         cx="50%"
                         cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
+                        innerRadius={58}
+                        outerRadius={78}
                         paddingAngle={2}
                         dataKey="value"
+                        isAnimationActive={true}
+                        animationBegin={0}
+                        animationDuration={1200}
+                        animationEasing="ease-out"
                       >
-                        {riskDistributionData.map((entry, index) => (
+                        {riskDistributionSeries.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
                     </PieChart>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 pt-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-[#fca5a5] rounded-full"></div>
@@ -331,13 +370,14 @@ export default function BankDashboard() {
 
               {/* Weekly Risk Trend */}
               <div key="weeklyTrend">
-                <Card className="p-6 bg-white border-blue-100 h-full overflow-auto">
+                <Card className="p-6 bg-white border-blue-100 h-full overflow-hidden flex flex-col">
                   <div className="flex items-center gap-2 mb-4 cursor-move drag-handle">
                     <GripVertical className="w-5 h-5 text-gray-400" />
                     <h3 className="font-semibold text-gray-700">WEEKLY RISK TREND</h3>
                   </div>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <LineChart data={weeklyTrendData}>
+                  <div className="flex-1 min-h-55">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={weeklyTrendSeries}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                       <XAxis dataKey="day" stroke="#64748b" style={{ fontSize: '12px' }} />
                       <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
@@ -350,6 +390,10 @@ export default function BankDashboard() {
                         strokeWidth={2}
                         name="New Cases"
                         dot={{ r: 4 }}
+                        isAnimationActive={animateIn}
+                        animationBegin={100}
+                        animationDuration={900}
+                        animationEasing="ease-out"
                       />
                       <Line
                         type="monotone"
@@ -359,9 +403,14 @@ export default function BankDashboard() {
                         strokeDasharray="5 5"
                         name="Interventions"
                         dot={{ r: 4 }}
+                        isAnimationActive={animateIn}
+                        animationBegin={140}
+                        animationDuration={900}
+                        animationEasing="ease-out"
                       />
-                    </LineChart>
-                  </ResponsiveContainer>
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
                 </Card>
               </div>
 
@@ -381,9 +430,9 @@ export default function BankDashboard() {
                         </div>
                         <div className="w-full bg-gray-100 rounded-full h-2">
                           <div
-                            className="h-2 rounded-full transition-all"
+                            className="h-2 rounded-full transition-[width] duration-700 ease-out"
                             style={{
-                              width: `${(indicator.cases / 842) * 100}%`,
+                              width: animateIn ? `${(indicator.cases / 842) * 100}%` : "0%",
                               backgroundColor: indicator.color,
                             }}
                           ></div>
@@ -410,8 +459,8 @@ export default function BankDashboard() {
                         </div>
                         <div className="w-full bg-gray-100 rounded-full h-2">
                           <div
-                            className="h-2 rounded-full bg-[#93c5fd] transition-all"
-                            style={{ width: `${feature.importance}%` }}
+                            className="h-2 rounded-full bg-[#93c5fd] transition-[width] duration-700 ease-out"
+                            style={{ width: animateIn ? `${feature.importance}%` : "0%" }}
                           ></div>
                         </div>
                       </div>
@@ -457,7 +506,7 @@ export default function BankDashboard() {
                             <td className="py-4 px-4 text-sm font-medium">{customer.name}</td>
                             <td className="py-4 px-4">
                               <div className="flex items-center gap-2">
-                                <div className="w-full max-w-[100px] bg-gray-100 rounded-full h-2">
+                                <div className="w-full max-w-25 bg-gray-100 rounded-full h-2">
                                   <div
                                     className={`h-2 rounded-full ${
                                       customer.riskScore >= 85
@@ -513,7 +562,7 @@ export default function BankDashboard() {
             <div className="p-6">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-full flex items-center justify-center">
+                  <div className="w-12 h-12 bg-linear-to-br from-blue-100 to-cyan-100 rounded-full flex items-center justify-center">
                     <span className="text-xl font-bold text-[#0074A3]">JA</span>
                   </div>
                   <div>
@@ -569,7 +618,7 @@ export default function BankDashboard() {
                 <h4 className="font-semibold mb-3 text-gray-700 text-sm">RISK TRIGGER BREAKDOWN</h4>
                 <div className="space-y-3">
                   <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-100 rounded-lg">
-                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
                     <div className="flex-1">
                       <p className="font-medium text-gray-800 text-sm">Salary Delay Detect</p>
                       <p className="text-xs text-gray-600">
@@ -578,7 +627,7 @@ export default function BankDashboard() {
                     </div>
                   </div>
                   <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-100 rounded-lg">
-                    <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
                     <div className="flex-1">
                       <p className="font-medium text-gray-800 text-sm">New Liability Spike</p>
                       <p className="text-xs text-gray-600">
@@ -614,7 +663,7 @@ export default function BankDashboard() {
               </div>
 
               <div className="space-y-2">
-                <Button className="w-full bg-gradient-to-r from-[#7dd3fc] to-[#93c5fd] text-gray-800 hover:opacity-90">
+                <Button className="w-full bg-linear-to-r from-[#7dd3fc] to-[#93c5fd] text-gray-800 hover:opacity-90">
                   START INTERVENTION
                 </Button>
                 <Button variant="outline" className="w-full">
@@ -629,15 +678,15 @@ export default function BankDashboard() {
       {/* Floating AI Chat Button */}
       <button
         onClick={() => setShowAIChat(!showAIChat)}
-        className="fixed bottom-8 right-8 w-16 h-16 bg-gradient-to-br from-[#7dd3fc] to-[#93c5fd] rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center z-50"
+        className="fixed bottom-8 right-8 w-16 h-16 bg-linear-to-br from-[#7dd3fc] to-[#93c5fd] rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center z-50"
       >
         <Bot className="w-7 h-7 text-gray-800" />
       </button>
 
       {/* AI Chat Popup */}
       {showAIChat && (
-        <div className="fixed bottom-28 right-8 w-96 h-[500px] bg-white rounded-lg shadow-2xl border border-blue-200 flex flex-col z-50">
-          <div className="p-4 bg-gradient-to-r from-[#7dd3fc] to-[#93c5fd] rounded-t-lg flex items-center justify-between">
+        <div className="fixed bottom-28 right-8 w-96 h-125 bg-white rounded-lg shadow-2xl border border-blue-200 flex flex-col z-50">
+          <div className="p-4 bg-linear-to-r from-[#7dd3fc] to-[#93c5fd] rounded-t-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Bot className="w-5 h-5 text-gray-800" />
               <h3 className="font-semibold text-gray-800">AI Assistant</h3>
@@ -682,12 +731,12 @@ export default function BankDashboard() {
                     handleSendMessage();
                   }
                 }}
-                className="flex-1 min-h-[60px] resize-none text-sm"
+                className="flex-1 min-h-15 resize-none text-sm"
               />
               <Button
                 onClick={handleSendMessage}
                 size="sm"
-                className="bg-gradient-to-r from-[#7dd3fc] to-[#93c5fd] text-gray-800 hover:opacity-90"
+                className="bg-linear-to-r from-[#7dd3fc] to-[#93c5fd] text-gray-800 hover:opacity-90"
               >
                 <Send className="w-4 h-4" />
               </Button>
