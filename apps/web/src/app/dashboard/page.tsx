@@ -24,6 +24,7 @@ import { Responsive, getCompactor } from "react-grid-layout";
 import type { Layout, LayoutItem } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { useDashboardLayouts } from "./DashboardLayoutProvider";
+import { generateAtRiskCustomers } from "@/lib/mockAtRiskCustomers";
 
 const ResponsiveGridLayout = Responsive;
 
@@ -36,8 +37,11 @@ export default function BankDashboard() {
   const [breakpoint, setBreakpoint] = useState<string>("lg");
   const layoutBeforeDragRef = useRef<Layout | null>(null);
   const [showAIChat, setShowAIChat] = useState(false);
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([]);
+  const [chatMessages, setChatMessages] = useState<
+    Array<{ id: string; role: "user" | "assistant"; content: string; thinking?: boolean }>
+  >([]);
   const [chatInput, setChatInput] = useState("");
+  const chatTimeoutsRef = useRef<number[]>([]);
 
   const handleResetLayout = () => {
     layoutBeforeDragRef.current = null;
@@ -48,6 +52,313 @@ export default function BankDashboard() {
     () => ({ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }),
     []
   );
+
+  const getRiskTone = (score: number) => {
+    if (score >= 85) {
+      return {
+        trackStroke: "#fee2e2", // red-100
+        ringStroke: "#f87171", // red-400
+        textClass: "text-red-600",
+        label: "CRITICAL",
+      };
+    }
+    if (score >= 70) {
+      return {
+        trackStroke: "#ffedd5", // orange-100
+        ringStroke: "#fb923c", // orange-400
+        textClass: "text-orange-600",
+        label: "ELEVATED",
+      };
+    }
+    return {
+      trackStroke: "#fef9c3", // yellow-100
+      ringStroke: "#facc15", // yellow-400
+      textClass: "text-yellow-600",
+      label: "WATCH",
+    };
+  };
+
+  const hashStringToUint = (str: string): number => {
+    // Deterministic tie-breaker for stable UI ordering.
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  };
+
+  type RiskBreakdownItem = {
+    tone: "critical" | "warning";
+    title: string;
+    description: string;
+  };
+
+  const formatINRCompact = (amount: number) => `₹${Math.round(amount).toLocaleString("en-IN")}`;
+
+  const buildRiskTriggerBreakdown = (customer: {
+    id: string;
+    riskScore: number;
+    trigger: string;
+    missedPayments?: number;
+  }): RiskBreakdownItem[] => {
+    const idHash = hashStringToUint(customer.id);
+    const triggerBase = (customer.trigger || "").split(" (")[0] || customer.trigger;
+
+    const salaryDelayDays = (() => {
+      const m = /\((\d+)D\)/i.exec(customer.trigger);
+      if (m?.[1]) return Number(m[1]);
+      return 2 + (idHash % 6);
+    })();
+
+    const liquidityGap = 65000 + (idHash % 125000); // ₹65k–₹1.9L
+    const bureauInquiries = 2 + (idHash % 4);
+    const inquiryWindowHours = 24 + (idHash % 48);
+    const spendVolatilityPct = 18 + (idHash % 42);
+
+    const secondary: RiskBreakdownItem =
+      customer.riskScore >= 90
+        ? {
+            tone: "warning",
+            title: "Spend Volatility Spike",
+            description: `Recent spend variance up by ${spendVolatilityPct}% vs trailing 30D baseline. Monitor discretionary categories and offer short-term buffer guidance.`,
+          }
+        : {
+            tone: "warning",
+            title: "Credit Inquiry Watch",
+            description: `${bureauInquiries} credit bureau inquiries detected in ~${inquiryWindowHours}h. Potential new obligations increasing near-term repayment stress.`,
+          };
+
+    if (triggerBase.startsWith("SALARY DELAY")) {
+      return [
+        {
+          tone: "critical",
+          title: "Salary Delay Detect",
+          description: `Salary credit delayed by ~${salaryDelayDays} days. Predicted liquidity gap: ${formatINRCompact(liquidityGap)}.`,
+        },
+        secondary,
+      ];
+    }
+
+    if (triggerBase === "BOUNCED EMI") {
+      const missed = Math.max(1, customer.missedPayments ?? 1);
+      const bounceAmount = 7000 + (idHash % 18000);
+      return [
+        {
+          tone: "critical",
+          title: "EMI Bounce Detected",
+          description: `${missed} bounced EMI${missed > 1 ? "s" : ""} recorded recently. Estimated bounced amount: ${formatINRCompact(bounceAmount)}. Immediate collections outreach recommended.`,
+        },
+        secondary,
+      ];
+    }
+
+    if (triggerBase === "OVERDRAFT SPIKE") {
+      const overdrafts = 2 + (idHash % 4);
+      const minBalance = 400 + (idHash % 1800);
+      return [
+        {
+          tone: "critical",
+          title: "Overdraft Frequency Increase",
+          description: `${overdrafts} overdraft events observed in the last 14 days. Minimum balance dipped to ${formatINRCompact(minBalance)}.`,
+        },
+        secondary,
+      ];
+    }
+
+    if (triggerBase === "MINIMUM DUE ONLY") {
+      const cycles = 2 + (idHash % 4);
+      const revolving = 32000 + (idHash % 110000);
+      return [
+        {
+          tone: "warning",
+          title: "Minimum Due Pattern",
+          description: `Minimum due-only payments for ${cycles} consecutive cycles. Revolving balance trending up (≈ ${formatINRCompact(revolving)}). Offer a budget + repayment plan.`,
+        },
+        secondary,
+      ];
+    }
+
+    if (triggerBase === "SAVINGS DEPLETION") {
+      const pct = 18 + (idHash % 18);
+      return [
+        {
+          tone: "warning",
+          title: "Savings Depletion Rate",
+          description: `Savings balance down ~${pct}% month-over-month. Soft nudge via SMS/email and cashflow coaching recommended.`,
+        },
+        secondary,
+      ];
+    }
+
+    if (triggerBase === "LOAN APP SPIKE") {
+      return [
+        {
+          tone: "warning",
+          title: "New Liability Spike",
+          description: `${bureauInquiries} credit bureau inquiries from short-term lenders / BNPL providers in ~${inquiryWindowHours}h. Financial wellness consult recommended.`,
+        },
+        secondary,
+      ];
+    }
+
+    if (triggerBase === "UTILIZATION SPIKE") {
+      const utilization = 65 + (idHash % 30);
+      return [
+        {
+          tone: "warning",
+          title: "Credit Utilization Surge",
+          description: `Revolving utilization spiked to ~${utilization}%. Consider credit limit review and reduce high-interest revolving exposure.`,
+        },
+        secondary,
+      ];
+    }
+
+    if (triggerBase === "CASH WITHDRAWAL SPIKE") {
+      const pct = 35 + (idHash % 45);
+      return [
+        {
+          tone: "warning",
+          title: "Cash Withdrawal Spike",
+          description: `ATM cash withdrawals up ~${pct}% vs baseline. Perform stress / fraud check-in and confirm repayment capacity.`,
+        },
+        secondary,
+      ];
+    }
+
+    return [
+      {
+        tone: "critical",
+        title: "Risk Trigger Detected",
+        description: `Primary trigger: ${customer.trigger}. Risk score indicates elevated repayment stress; prioritize outreach if trend persists.`,
+      },
+      secondary,
+    ];
+  };
+
+  const pickMixedAtRiskRows = <T extends { id: string; riskScore: number }>(
+    rows: T[],
+    count: number
+  ): T[] => {
+    const sorted = rows
+      .slice()
+      .sort(
+        (a, b) =>
+          (b.riskScore - a.riskScore) ||
+          (hashStringToUint(a.id) - hashStringToUint(b.id))
+      );
+
+    const picked: T[] = [];
+    const used = new Set<string>();
+
+    const triggerKey = (row: any): string => {
+      const raw = typeof row?.trigger === "string" ? row.trigger : "";
+      return raw.split(" (")[0] || raw;
+    };
+
+    const triggerCounts = new Map<string, number>();
+    const bumpTrigger = (row: any) => {
+      const key = triggerKey(row) || "UNKNOWN";
+      triggerCounts.set(key, (triggerCounts.get(key) ?? 0) + 1);
+    };
+    const getTriggerCount = (row: any) => {
+      const key = triggerKey(row) || "UNKNOWN";
+      return triggerCounts.get(key) ?? 0;
+    };
+
+    // Pin Rajesh Saxena first (used by the demo chatbot).
+    const pinnedIds = ["6872-M-1233"]; // Saxena, Rajesh
+    for (const id of pinnedIds) {
+      const found = sorted.find((r) => r.id === id);
+      if (found && !used.has(found.id)) {
+        used.add(found.id);
+        picked.push(found);
+        bumpTrigger(found);
+      }
+    }
+
+    // Desired visible mix (first rows): start very high, then taper naturally.
+    // This keeps the table from looking like all 98s while still being a priority queue.
+    const desiredScores = [
+      98,
+      98,
+      97,
+      96,
+      95,
+      94,
+      92,
+      91,
+      90,
+      89,
+      88,
+      87,
+      86,
+      85,
+      84,
+      83,
+      82,
+      81,
+      80,
+      79,
+      78,
+      77,
+      76,
+      75,
+      74,
+      73,
+      72,
+      71,
+      70,
+      69,
+      68,
+    ];
+
+    const headLimit = Math.min(count, 18);
+    const maxPerTriggerInHead = 2;
+
+    for (const target of desiredScores) {
+      if (picked.length >= count) break;
+      let best: T | null = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      let bestScore = Number.POSITIVE_INFINITY;
+
+      for (const r of sorted) {
+        if (used.has(r.id)) continue;
+        const dist = Math.abs(r.riskScore - target);
+
+        // Early rows: avoid repeating the same trigger too many times.
+        if (picked.length < headLimit && getTriggerCount(r) >= maxPerTriggerInHead) {
+          continue;
+        }
+
+        // Prefer closer score matches, then prefer trigger diversity.
+        // (lower triggerCount is better)
+        const score = dist * 1000 + getTriggerCount(r) * 25;
+        if (score < bestScore) {
+          best = r;
+          bestDist = dist;
+          bestScore = score;
+          if (bestDist === 0 && getTriggerCount(r) === 0) break;
+        }
+      }
+
+      if (best) {
+        used.add(best.id);
+        picked.push(best);
+        bumpTrigger(best);
+      }
+    }
+
+    for (const r of sorted) {
+      if (picked.length >= count) break;
+      if (used.has(r.id)) continue;
+      used.add(r.id);
+      picked.push(r);
+      bumpTrigger(r);
+    }
+
+    return picked.slice(0, count);
+  };
 
   const getOverlapArea = (a: LayoutItem, b: LayoutItem): number => {
     const left = Math.max(a.x, b.x);
@@ -392,6 +703,15 @@ export default function BankDashboard() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      for (const t of chatTimeoutsRef.current) {
+        clearTimeout(t);
+      }
+      chatTimeoutsRef.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
     const element = gridContainerRef.current;
     if (!element) return;
 
@@ -473,58 +793,86 @@ export default function BankDashboard() {
     { feature: "Demographics", importance: 5 },
   ];
 
-  const atRiskCustomers = [
-    {
-      id: "8829-X-4421",
-      name: "Sharma, Rajesh",
-      riskScore: 92,
-      trigger: "SALARY DELAY (4D)",
-      action: "Immediate Phone Intervention",
-      status: "Urgent",
-    },
-    {
-      id: "1104-B-8923",
-      name: "Singh, Anjali",
-      riskScore: 88,
-      trigger: "SAVINGS DEPLETION",
-      action: "Soft Nudge SMS / Email",
-      status: "Pending",
-    },
-    {
-      id: "7732-K-0012",
-      name: "Gupta, Neha",
-      riskScore: 74,
-      trigger: "LOAN APP SPIKE",
-      action: "Financial Wellness Consult",
-      status: "Pending",
-    },
-    {
-      id: "5543-P-2111",
-      name: "Reddy, Karthik",
-      riskScore: 68,
-      trigger: "UTILIZATION SPIKE",
-      action: "Credit Limit Review",
-      status: "Contacted",
-    },
-  ];
+  const highRiskTotal = 1248;
+  const atRiskCustomersAll = useMemo(
+    () => generateAtRiskCustomers(highRiskTotal, 20260219),
+    []
+  );
+  const atRiskCustomers = useMemo(
+    () => pickMixedAtRiskRows(atRiskCustomersAll, 30),
+    [atRiskCustomersAll]
+  );
 
   const spendingVelocityData = Array.from({ length: 30 }, (_, i) => ({
     day: i + 1,
     value: Math.floor(Math.random() * 40) + (i > 25 ? 80 : 60),
   }));
 
-  const selectedCustomerData = selectedCustomer 
-    ? atRiskCustomers.find(c => c.id === selectedCustomer)
+  const selectedCustomerData = selectedCustomer
+    ? atRiskCustomersAll.find((c) => c.id === selectedCustomer)
     : null;
+
+  const selectedTone = selectedCustomerData
+    ? getRiskTone(selectedCustomerData.riskScore)
+    : null;
+
+  const selectedBreakdown = useMemo(() => {
+    if (!selectedCustomerData) return [] as RiskBreakdownItem[];
+    return buildRiskTriggerBreakdown(selectedCustomerData);
+  }, [selectedCustomerData]);
 
   const handleSendMessage = () => {
     if (!chatInput.trim()) return;
 
-    setChatMessages([...chatMessages, 
-      { role: 'user', content: chatInput },
-      { role: 'assistant', content: 'Based on current data, there are 1,248 high-risk customers. The top triggers are salary delays (842 cases) and savings depletion (612 cases). Would you like me to analyze a specific segment?' }
+    const text = chatInput.trim();
+    const normalized = text.toLowerCase();
+
+    const userId = `u_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const assistantId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+    const getAssistantReply = (): string => {
+      // Hardcoded demo replies (no backend / no model calls)
+      const asksLowRisk = normalized.includes("low") && normalized.includes("risk");
+      if (asksLowRisk) {
+        return (
+          "Low-risk customers: 8,106 accounts. Summary: the majority show consistent on-time repayments, stable monthly salary credits, low credit utilization (<30%), and no recent overdraft / EMI bounce signals. Top ‘protective’ indicators are strong payment history and steady cashflow, with minimal spend volatility."
+        );
+      }
+
+      const asksRajeshStatus =
+        normalized.includes("status") &&
+        normalized.includes("rajesh") &&
+        (normalized.includes("saxena") || normalized.includes("sexena"));
+      if (asksRajeshStatus) {
+        return (
+          "Rajesh Saxena (6872-M-1233): Risk score 98 (Critical). Primary trigger: SALARY DELAY (5D). Recommended action: Immediate Phone Intervention. Current status: Urgent — no missed payments logged yet, but cashflow stress is escalating; prioritize outreach today and offer a short-term repayment plan if needed."
+        );
+      }
+
+      return "Based on current data, there are 1,248 high-risk customers. The top triggers are salary delays (842 cases) and savings depletion (612 cases). Would you like me to analyze a specific segment?";
+    };
+
+    const assistantReply = getAssistantReply();
+
+    // Add the user message immediately, then show a short “thinking” bubble
+    // to make the demo feel less instant/hardcoded.
+    setChatMessages((prev) => [
+      ...prev,
+      { id: userId, role: "user", content: text },
+      { id: assistantId, role: "assistant", content: "", thinking: true },
     ]);
     setChatInput("");
+
+    const timeout = window.setTimeout(() => {
+      setChatMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? { ...m, content: assistantReply, thinking: false }
+            : m
+        )
+      );
+    }, 2000);
+    chatTimeoutsRef.current.push(timeout);
   };
 
   return (
@@ -567,7 +915,7 @@ export default function BankDashboard() {
               <Card className="p-6 bg-white border-blue-100">
                 <div>
                   <p className="text-sm text-gray-500 mb-1">HIGH RISK CUSTOMERS</p>
-                  <p className="text-3xl font-bold text-gray-800">1,248</p>
+                  <p className="text-3xl font-bold text-gray-800">{highRiskTotal.toLocaleString("en-IN")}</p>
                   <div className="flex items-center gap-1 mt-2 text-red-600">
                     <TrendingUp className="w-4 h-4" />
                     <span className="text-sm font-medium">↑ 12.4%</span>
@@ -905,7 +1253,7 @@ export default function BankDashboard() {
                         cx="56"
                         cy="56"
                         r="48"
-                        stroke="#fee2e2"
+                        stroke={selectedTone?.trackStroke ?? "#fee2e2"}
                         strokeWidth="10"
                         fill="none"
                       />
@@ -913,7 +1261,7 @@ export default function BankDashboard() {
                         cx="56"
                         cy="56"
                         r="48"
-                        stroke="#f87171"
+                        stroke={selectedTone?.ringStroke ?? "#f87171"}
                         strokeWidth="10"
                         fill="none"
                         strokeDasharray={`${301 * (selectedCustomerData.riskScore / 100)} ${301 * (1 - selectedCustomerData.riskScore / 100)}`}
@@ -922,8 +1270,8 @@ export default function BankDashboard() {
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="text-center">
-                        <p className="text-2xl font-bold text-red-600">{selectedCustomerData.riskScore}</p>
-                        <p className="text-xs text-gray-500">CRITICAL</p>
+                        <p className={`text-2xl font-bold ${selectedTone?.textClass ?? "text-red-600"}`}>{selectedCustomerData.riskScore}</p>
+                        <p className="text-xs text-gray-500">{selectedTone?.label ?? "CRITICAL"}</p>
                       </div>
                     </div>
                   </div>
@@ -934,24 +1282,26 @@ export default function BankDashboard() {
               <div className="mb-6">
                 <h4 className="font-semibold mb-3 text-gray-700 text-sm">RISK TRIGGER BREAKDOWN</h4>
                 <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-100 rounded-lg">
-                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-800 text-sm">Salary Delay Detect</p>
-                      <p className="text-xs text-gray-600">
-                        Historical pay date missed by 4.2 days. Predicted liquidity gap: ₹1,07,250.
-                      </p>
+                  {selectedBreakdown.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex items-start gap-3 p-3 rounded-lg border ${
+                        item.tone === "critical"
+                          ? "bg-red-50 border-red-100"
+                          : "bg-yellow-50 border-yellow-100"
+                      }`}
+                    >
+                      {item.tone === "critical" ? (
+                        <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
+                      )}
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-800 text-sm">{item.title}</p>
+                        <p className="text-xs text-gray-600">{item.description}</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-100 rounded-lg">
-                    <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-800 text-sm">New Liability Spike</p>
-                      <p className="text-xs text-gray-600">
-                        3 Credit Bureau inquiries from Buy-Now-Pay-Later providers in 48h.
-                      </p>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
 
@@ -1028,7 +1378,24 @@ export default function BankDashboard() {
                         ? 'bg-[#bfdbfe] text-gray-800' 
                         : 'bg-gray-100 text-gray-800'
                     }`}>
-                      {msg.content}
+                      {msg.thinking ? (
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="inline-block h-2 w-2 rounded-full bg-gray-400 animate-bounce"
+                            style={{ animationDelay: "0ms" }}
+                          />
+                          <span
+                            className="inline-block h-2 w-2 rounded-full bg-gray-400 animate-bounce"
+                            style={{ animationDelay: "150ms" }}
+                          />
+                          <span
+                            className="inline-block h-2 w-2 rounded-full bg-gray-400 animate-bounce"
+                            style={{ animationDelay: "300ms" }}
+                          />
+                        </div>
+                      ) : (
+                        msg.content
+                      )}
                     </div>
                   </div>
                 ))}

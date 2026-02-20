@@ -1,137 +1,176 @@
 'use client';
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, Bell, Settings, Filter, Download, AlertCircle, Phone } from "lucide-react";
 import { BankSidebar } from "@/components/BankSidebar";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { generateAtRiskCustomers } from "@/lib/mockAtRiskCustomers";
+
+function hashStringToUint(str: string): number {
+  // Deterministic (no Math.random) so the UI stays stable across reloads.
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function pickPriorityMix<T extends { id: string; riskScore: number }>(
+  rows: T[],
+  count: number
+): T[] {
+  const sorted = rows
+    .slice()
+    .sort((a, b) => (b.riskScore - a.riskScore) || (hashStringToUint(a.id) - hashStringToUint(b.id)));
+
+  const picked: T[] = [];
+  const used = new Set<string>();
+
+  // Balance: some very high, some high, some borderline-high.
+  // This avoids the UI looking like every priority case is identical.
+  const tierA = Math.floor(count * 0.42); // ~10 of 24
+  const tierB = Math.floor(count * 0.33); // ~8 of 24
+  const tierC = count - tierA - tierB; // remainder
+
+  const aPred = (r: T) => r.riskScore >= 95;
+  const bPred = (r: T) => r.riskScore >= 90 && r.riskScore <= 94;
+  const cPred = (r: T) => r.riskScore >= 85 && r.riskScore <= 89;
+
+  // Take per tier; if any tier is short, we’ll fill from the remainder below.
+  const takeTier = (predicate: (r: T) => boolean, n: number) => {
+    let taken = 0;
+    for (const r of sorted) {
+      if (picked.length >= count) break;
+      if (taken >= n) break;
+      if (used.has(r.id)) continue;
+      if (!predicate(r)) continue;
+      used.add(r.id);
+      picked.push(r);
+      taken++;
+    }
+  };
+
+  takeTier(aPred, tierA);
+  takeTier(bPred, tierB);
+  takeTier(cPred, tierC);
+
+  for (const r of sorted) {
+    if (picked.length >= count) break;
+    if (used.has(r.id)) continue;
+    used.add(r.id);
+    picked.push(r);
+  }
+
+  return picked;
+}
 
 export default function BankAtRiskCustomers() {
   const [filter, setFilter] = useState<"all" | "priority" | "contacted" | "all-customers">("all");
+  const pageSize = 25;
+  const [page, setPage] = useState(1);
 
-  const priorityCustomers = [
-    {
-      id: "8829-X-4421",
-      name: "Sharma, Rajesh",
-      riskScore: 92,
-      trigger: "SALARY DELAY (4D)",
-      requestedHelp: true,
-      requestDate: "Feb 16, 2026 09:23 AM",
-      phone: "+91 98765 43210",
-      email: "r.sharma@email.com",
-      loanAmount: "₹16,17,000",
-      missedPayments: 0,
-      status: "Help Requested",
-    },
-    {
-      id: "5621-M-7834",
-      name: "Patel, Priya",
-      riskScore: 89,
-      trigger: "SAVINGS DEPLETION",
-      requestedHelp: true,
-      requestDate: "Feb 16, 2026 08:45 AM",
-      phone: "+91 98765 43211",
-      email: "p.patel@email.com",
-      loanAmount: "₹23,20,500",
-      missedPayments: 0,
-      status: "Help Requested",
-    },
-    {
-      id: "3345-L-9012",
-      name: "Kumar, Amit",
-      riskScore: 85,
-      trigger: "LOAN APP SPIKE",
-      requestedHelp: true,
-      requestDate: "Feb 15, 2026 04:12 PM",
-      phone: "+91 98765 43212",
-      email: "a.kumar@email.com",
-      loanAmount: "₹19,68,750",
-      missedPayments: 0,
-      status: "Help Requested",
-    },
-  ];
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
 
-  const regularAtRiskCustomers = [
-    {
-      id: "1104-B-8923",
-      name: "Singh, Anjali",
-      riskScore: 88,
-      trigger: "SAVINGS DEPLETION",
-      requestedHelp: false,
-      phone: "+91 98765 43213",
-      email: "a.singh@email.com",
-      loanAmount: "₹20,16,000",
-      missedPayments: 0,
-      status: "Pending",
-    },
-    {
-      id: "7732-K-0012",
-      name: "Gupta, Neha",
-      riskScore: 74,
-      trigger: "LOAN APP SPIKE",
-      requestedHelp: false,
-      phone: "+91 98765 43214",
-      email: "n.gupta@email.com",
-      loanAmount: "₹13,12,500",
-      missedPayments: 0,
-      status: "Pending",
-    },
-    {
-      id: "5543-P-2111",
-      name: "Reddy, Karthik",
-      riskScore: 68,
-      trigger: "UTILIZATION SPIKE",
-      requestedHelp: false,
-      phone: "+91 98765 43215",
-      email: "k.reddy@email.com",
-      loanAmount: "₹9,34,500",
-      missedPayments: 0,
-      status: "Contacted",
-    },
-    {
-      id: "9234-R-3456",
-      name: "Iyer, Meera",
-      riskScore: 71,
-      trigger: "OVERDRAFT SPIKE",
-      requestedHelp: false,
-      phone: "+91 98765 43216",
-      email: "m.iyer@email.com",
-      loanAmount: "₹15,01,500",
-      missedPayments: 0,
-      status: "Pending",
-    },
-  ];
+  const highRiskTotal = 1248;
+  const generatedAtRisk = useMemo(
+    () => generateAtRiskCustomers(highRiskTotal, 20260219),
+    []
+  );
 
-  const allCustomers = [
-    ...priorityCustomers,
-    ...regularAtRiskCustomers,
-    {
-      id: "2341-T-5678",
-      name: "Desai, Rohan",
-      riskScore: 24,
-      trigger: "N/A",
-      requestedHelp: false,
-      phone: "+91 98765 43217",
-      email: "r.desai@email.com",
-      loanAmount: "₹10,71,000",
-      missedPayments: 0,
-      status: "Good Standing",
-    },
-    {
-      id: "8912-F-3421",
-      name: "Nair, Vivek",
-      riskScore: 18,
-      trigger: "N/A",
-      requestedHelp: false,
-      phone: "+91 98765 43218",
-      email: "v.nair@email.com",
-      loanAmount: "₹8,19,000",
-      missedPayments: 0,
-      status: "Good Standing",
-    },
-  ];
+  const priorityCustomers = useMemo(() => {
+    // Mix the priority queue so it doesn't look like every case is identical.
+    // Still deterministic, still biased toward higher-risk customers.
+    return pickPriorityMix(generatedAtRisk, 24).map((c) => ({
+        ...c,
+        requestedHelp: true,
+        requestDate: c.requestDate ?? "Feb 16, 2026 10:05 AM",
+        status: "Help Requested" as const,
+      }));
+  }, [generatedAtRisk]);
+
+  const regularAtRiskCustomers = useMemo(() => {
+    const priorityIds = new Set(priorityCustomers.map((c) => c.id));
+    return generatedAtRisk
+      .filter((c) => !priorityIds.has(c.id))
+      .map((c) => ({
+        ...c,
+        requestedHelp: false,
+        status: c.status === "Urgent" ? ("Pending" as const) : c.status,
+      }));
+  }, [generatedAtRisk, priorityCustomers]);
+
+  const allCustomers = useMemo(
+    () => [
+      ...priorityCustomers,
+      ...regularAtRiskCustomers,
+      {
+        id: "2341-T-5678",
+        name: "Desai, Rohan",
+        riskScore: 24,
+        trigger: "N/A",
+        requestedHelp: false,
+        phone: "+91 98765 43217",
+        email: "r.desai@email.com",
+        loanAmount: "₹10,71,000",
+        missedPayments: 0,
+        status: "Good Standing",
+      },
+      {
+        id: "8912-F-3421",
+        name: "Nair, Vivek",
+        riskScore: 18,
+        trigger: "N/A",
+        requestedHelp: false,
+        phone: "+91 98765 43218",
+        email: "v.nair@email.com",
+        loanAmount: "₹8,19,000",
+        missedPayments: 0,
+        status: "Good Standing",
+      },
+    ],
+    [priorityCustomers, regularAtRiskCustomers]
+  );
+
+  const regularFiltered = useMemo(() => {
+    return regularAtRiskCustomers.filter(
+      (c) => filter !== "contacted" || c.status === "Contacted"
+    );
+  }, [regularAtRiskCustomers, filter]);
+
+  const regularTotal = regularFiltered.length;
+  const regularStart = (page - 1) * pageSize;
+  const regularEnd = Math.min(regularTotal, regularStart + pageSize);
+  const regularPageRows = useMemo(
+    () => regularFiltered.slice(regularStart, regularEnd),
+    [regularFiltered, regularStart, regularEnd]
+  );
+
+  const allTotal = allCustomers.length;
+  const allStart = (page - 1) * pageSize;
+  const allEnd = Math.min(allTotal, allStart + pageSize);
+  const allPageRows = useMemo(
+    () => allCustomers.slice(allStart, allEnd),
+    [allCustomers, allStart, allEnd]
+  );
+
+  const totalAtRisk = priorityCustomers.length + regularAtRiskCustomers.length;
+  const helpRequestedCount = priorityCustomers.length;
+  const avgRiskScore = useMemo(() => {
+    const all = [...priorityCustomers, ...regularAtRiskCustomers];
+    if (all.length === 0) return 0;
+    const sum = all.reduce((acc, c) => acc + c.riskScore, 0);
+    return Math.round(sum / all.length);
+  }, [priorityCustomers, regularAtRiskCustomers]);
+  const immediateActionCount = useMemo(() => {
+    const all = [...priorityCustomers, ...regularAtRiskCustomers];
+    return all.filter((c) => c.riskScore >= 90).length;
+  }, [priorityCustomers, regularAtRiskCustomers]);
 
   const getFilteredCustomers = () => {
     if (filter === "priority") return priorityCustomers;
@@ -180,19 +219,19 @@ export default function BankAtRiskCustomers() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <Card className="p-4 bg-white border-blue-100">
               <p className="text-sm text-gray-500 mb-1">Total At-Risk</p>
-              <p className="text-2xl font-bold text-gray-800">7</p>
+              <p className="text-2xl font-bold text-gray-800">{totalAtRisk}</p>
             </Card>
             <Card className="p-4 bg-blue-50 border-blue-200">
               <p className="text-sm text-blue-700 mb-1">Help Requested</p>
-              <p className="text-2xl font-bold text-blue-800">3</p>
+              <p className="text-2xl font-bold text-blue-800">{helpRequestedCount}</p>
             </Card>
             <Card className="p-4 bg-white border-blue-100">
               <p className="text-sm text-gray-500 mb-1">Avg Risk Score</p>
-              <p className="text-2xl font-bold text-gray-800">82</p>
+              <p className="text-2xl font-bold text-gray-800">{avgRiskScore}</p>
             </Card>
             <Card className="p-4 bg-white border-red-100">
               <p className="text-sm text-red-500 mb-1">Needs Immediate Action</p>
-              <p className="text-2xl font-bold text-red-600">5</p>
+              <p className="text-2xl font-bold text-red-600">{immediateActionCount}</p>
             </Card>
           </div>
 
@@ -251,10 +290,10 @@ export default function BankAtRiskCustomers() {
 
               <div className="space-y-3">
                 {priorityCustomers.map((customer) => (
-                  <Card key={customer.id} className="p-6 bg-gradient-to-r from-blue-50 to-white border-blue-200">
+                  <Card key={customer.id} className="p-6 bg-linear-to-r from-blue-50 to-white border-blue-200">
                     <div className="flex items-start justify-between">
                       <div className="flex gap-6 flex-1">
-                        <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-full flex items-center justify-center">
+                        <div className="w-16 h-16 bg-linear-to-br from-blue-100 to-cyan-100 rounded-full flex items-center justify-center">
                           <Phone className="w-8 h-8 text-blue-600" />
                         </div>
                         
@@ -268,13 +307,29 @@ export default function BankAtRiskCustomers() {
                           <div>
                             <p className="text-xs text-gray-500 mb-1">RISK SCORE</p>
                             <div className="flex items-center gap-2">
-                              <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[80px]">
+                              <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-20">
                                 <div
-                                  className="h-2 rounded-full bg-red-500"
+                                  className={`h-2 rounded-full ${
+                                    customer.riskScore >= 85
+                                      ? "bg-red-500"
+                                      : customer.riskScore >= 70
+                                      ? "bg-orange-500"
+                                      : "bg-yellow-500"
+                                  }`}
                                   style={{ width: `${customer.riskScore}%` }}
                                 ></div>
                               </div>
-                              <span className="font-bold text-red-600">{customer.riskScore}</span>
+                              <span
+                                className={`font-bold ${
+                                  customer.riskScore >= 85
+                                    ? "text-red-600"
+                                    : customer.riskScore >= 70
+                                    ? "text-orange-600"
+                                    : "text-yellow-700"
+                                }`}
+                              >
+                                {customer.riskScore}
+                              </span>
                             </div>
                             <Badge className="mt-1 bg-red-100 text-red-700 text-xs">
                               {customer.trigger}
@@ -302,7 +357,7 @@ export default function BankAtRiskCustomers() {
                       </div>
 
                       <div className="flex flex-col gap-2">
-                        <Button className="bg-gradient-to-r from-[#7dd3fc] to-[#93c5fd] text-gray-800 hover:opacity-90">
+                        <Button className="bg-linear-to-r from-[#7dd3fc] to-[#93c5fd] text-gray-800 hover:opacity-90">
                           CALL NOW
                         </Button>
                         <Button variant="outline">View Details</Button>
@@ -337,9 +392,7 @@ export default function BankAtRiskCustomers() {
                       </tr>
                     </thead>
                     <tbody>
-                      {regularAtRiskCustomers
-                        .filter(c => filter !== "contacted" || c.status === "Contacted")
-                        .map((customer) => (
+                      {regularPageRows.map((customer) => (
                         <tr
                           key={customer.id}
                           className="border-b border-gray-100 hover:bg-blue-50 transition-colors"
@@ -399,6 +452,30 @@ export default function BankAtRiskCustomers() {
                     </tbody>
                   </table>
                 </div>
+
+                <div className="flex items-center justify-between p-4 border-t border-gray-200">
+                  <p className="text-sm text-gray-500">
+                    Showing {regularTotal === 0 ? 0 : regularStart + 1}-{regularEnd} of {regularTotal}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      Prev
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={regularEnd >= regularTotal}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
               </Card>
             </div>
           )}
@@ -424,7 +501,7 @@ export default function BankAtRiskCustomers() {
                       </tr>
                     </thead>
                     <tbody>
-                      {allCustomers.map((customer) => (
+                      {allPageRows.map((customer) => (
                         <tr
                           key={customer.id}
                           className="border-b border-gray-100 hover:bg-blue-50 transition-colors"
@@ -495,6 +572,30 @@ export default function BankAtRiskCustomers() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border-t border-gray-200">
+                  <p className="text-sm text-gray-500">
+                    Showing {allTotal === 0 ? 0 : allStart + 1}-{allEnd} of {allTotal}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      Prev
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={allEnd >= allTotal}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               </Card>
             </div>

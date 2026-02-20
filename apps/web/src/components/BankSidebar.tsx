@@ -6,6 +6,7 @@ import {
   Users,
   Bot,
   Calculator,
+  Newspaper,
   TrendingUp,
   RotateCcw,
 } from "lucide-react";
@@ -39,6 +40,11 @@ export function BankSidebar({ className = "", onResetLayout }: BankSidebarProps)
       icon: Calculator,
       label: "Intervention Planner",
       path: "/dashboard/intervention-planner",
+    },
+    {
+      icon: Newspaper,
+      label: "News",
+      path: "/news",
     },
   ];
 

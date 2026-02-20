@@ -31,7 +31,7 @@ type InterventionPlan = {
 
 export default function BankInterventionPlanner() {
   const [customerId, setCustomerId] = useState("8829-X-4421");
-  const [customerName, setCustomerName] = useState("Alexander, James");
+  const [customerName, setCustomerName] = useState("Kabir, Khanuja");
   const [plans, setPlans] = useState<InterventionPlan[]>([]);
   const [showForm, setShowForm] = useState(false);
 
@@ -101,7 +101,7 @@ export default function BankInterventionPlanner() {
     setShowForm(false);
   };
 
-  const handleLoadExamples = () => {
+  const handleLoadPresets = () => {
     const examplePlans: InterventionPlan[] = [
       {
         id: "1",
@@ -206,11 +206,14 @@ export default function BankInterventionPlanner() {
                       Help Requested
                     </span>
                   </div>
+                  <p className="text-xs text-gray-500 mt-2 max-w-xl">
+                    Compare multiple intervention options for this client and predict expected outcomes (recovery probability, further loss risk, and customer satisfaction). Save repeatable strategies as presets and apply them in one click.
+                  </p>
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={handleLoadExamples}>
-                  Load Example Plans
+                <Button variant="outline" onClick={handleLoadPresets}>
+                  Load Presets
                 </Button>
                 <Button
                   onClick={() => setShowForm(!showForm)}
@@ -404,14 +407,14 @@ export default function BankInterventionPlanner() {
                 </div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">No Plans Yet</h3>
                 <p className="text-gray-600 mb-6">
-                  Create intervention plans to compare recovery probabilities
+                  Add a few plan options to predict how different solutions might perform for this customer. You can also start from a preset and tailor it.
                 </p>
                 <div className="flex gap-3 justify-center">
                   <Button
-                    onClick={handleLoadExamples}
+                    onClick={handleLoadPresets}
                     variant="outline"
                   >
-                    Load Example Plans
+                    Load Presets
                   </Button>
                   <Button
                     onClick={() => setShowForm(true)}
